@@ -289,6 +289,26 @@ var WifiWizard = {
             return;
         }
         cordova.exec(win, fail, 'WifiWizard', 'setWifiEnabled', [enabled]);
+    },
+
+    /**
+     *  Gets '1' if current WiFi is 5GHZ
+     * @param   win callback function
+     * @param   fail callback function if wifi is disabled
+     */
+    is5g: function(win, fail) {
+        if (typeof win != "function") {
+            console.log("is5g first parameter must be a function to handle SSID.");
+            return;
+        }
+        cordova.exec(
+            // Cordova can only return strings to JS, and the underlying plugin
+            // sends a "1" for true and "0" for false.
+            function(result) {
+                win(result == "1");
+            },
+            fail, 'WifiWizard', 'is5g', []
+        );
     }
 };
 
