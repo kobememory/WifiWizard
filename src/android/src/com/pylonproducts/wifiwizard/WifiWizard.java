@@ -56,13 +56,12 @@ public class WifiWizard extends CordovaPlugin {
     @Override
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
         super.initialize(cordova, webView);
-        this.wifiManager = (WifiManager) cordova.getActivity().getSystemService(Context.WIFI_SERVICE);
+        this.wifiManager = (WifiManager) cordova.getActivity().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
     }
 
     @Override
-    public boolean execute(String action, JSONArray data, CallbackContext callbackContext)
+    public boolean execute(String action, final JSONArray data, final CallbackContext callbackContext)
             throws JSONException {
-
         this.callbackContext = callbackContext;
 
         if (action.equals(IS_WIFI_ENABLED)) {
@@ -77,7 +76,13 @@ public class WifiWizard extends CordovaPlugin {
         } else if (action.equals(REMOVE_NETWORK)) {
             return this.removeNetwork(callbackContext, data);
         } else if (action.equals(CONNECT_NETWORK)) {
-            return this.connectNetwork(callbackContext, data);
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    connectNetwork(callbackContext,data);
+                }
+            });
+            return true;
         } else if (action.equals(DISCONNECT_NETWORK)) {
             return this.disconnectNetwork(callbackContext, data);
         } else if (action.equals(LIST_NETWORKS)) {
@@ -89,9 +94,21 @@ public class WifiWizard extends CordovaPlugin {
         } else if (action.equals(DISCONNECT)) {
             return this.disconnect(callbackContext);
         } else if (action.equals(GET_CONNECTED_SSID)) {
-            return this.getConnectedSSID(callbackContext);
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    getConnectedSSID(callbackContext);
+                }
+            });
+            return true;
         } else if (action.equals(IS_5GHZ)){
-            return this.is5GHz(callbackContext);
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    is5GHz(callbackContext);
+                }
+            });
+            return true;
         } else {
             callbackContext.error("Incorrect action parameter: " + action);
         }
@@ -250,11 +267,11 @@ public class WifiWizard extends CordovaPlugin {
 
 
         int networkIdToConnect = ssidToNetworkId(ssidToConnect);
-
         if (networkIdToConnect >= 0) {
+
             // We disable the network before connecting, because if this was the last connection before
             // a disconnect(), this will not reconnect.
-            wifiManager.disableNetwork(networkIdToConnect);
+            // wifiManager.disableNetwork(networkIdToConnect);
             wifiManager.enableNetwork(networkIdToConnect, true);
 
             SupplicantState supState;
