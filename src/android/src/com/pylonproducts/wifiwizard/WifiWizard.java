@@ -249,43 +249,43 @@ public class WifiWizard extends CordovaPlugin {
      * @return true if network connected, false if failed
      */
     private boolean connectNetwork(CallbackContext callbackContext, JSONArray data) {
-       Log.d(TAG, "WifiWizard: connectNetwork entered.");
-       if (!validateData(data)) {
-           callbackContext.error("WifiWizard: connectNetwork invalid data");
-           Log.d(TAG, "WifiWizard: connectNetwork invalid data.");
-           return false;
-       }
-       String ssidToConnect = "";
+        Log.d(TAG, "WifiWizard: connectNetwork entered.");
+        if (!validateData(data)) {
+            callbackContext.error("WifiWizard: connectNetwork invalid data");
+            Log.d(TAG, "WifiWizard: connectNetwork invalid data.");
+            return false;
+        }
+        String ssidToConnect = "";
 
-       try {
-           ssidToConnect = data.getString(0);
-           Log.d(TAG, "ssidToConnect="+ssidToConnect);
-       } catch (Exception e) {
-           callbackContext.error(e.getMessage());
-           Log.d(TAG, e.getMessage());
-           return false;
-       }
+        try {
+            ssidToConnect = data.getString(0);
+            Log.d(TAG, "ssidToConnect="+ssidToConnect);
+        } catch (Exception e) {
+            callbackContext.error(e.getMessage());
+            Log.d(TAG, e.getMessage());
+            return false;
+        }
 
 
-       int networkIdToConnect = ssidToNetworkId(ssidToConnect);
-       if (networkIdToConnect >= 0) {
+        int networkIdToConnect = ssidToNetworkId(ssidToConnect);
+        if (networkIdToConnect >= 0) {
 
-           // We disable the network before connecting, because if this was the last connection before
-           // a disconnect(), this will not reconnect.
-           // wifiManager.disableNetwork(networkIdToConnect);
-           wifiManager.enableNetwork(networkIdToConnect, true);
+            // We disable the network before connecting, because if this was the last connection before
+            // a disconnect(), this will not reconnect.
+            // wifiManager.disableNetwork(networkIdToConnect);
+            wifiManager.enableNetwork(networkIdToConnect, true);
 
-           SupplicantState supState;
-           WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-           supState = wifiInfo.getSupplicantState();
-           callbackContext.success(supState.toString());
-           return true;
+            SupplicantState supState;
+            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+            supState = wifiInfo.getSupplicantState();
+            callbackContext.success(supState.toString());
+            return true;
 
-       } else {
-           callbackContext.error("WifiWizard: cannot connect to network");
-           return false;
-       }
-        return true;
+        } else {
+            callbackContext.error("WifiWizard: cannot connect to network");
+            return false;
+        }
+//        return true;
     }
 
     /**
