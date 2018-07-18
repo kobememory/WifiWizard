@@ -14,13 +14,18 @@
  */
 package com.pylonproducts.wifiwizard;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Handler;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 
 import org.apache.cordova.CallbackContext;
@@ -45,6 +50,7 @@ public class WifiWizard extends CordovaPlugin {
     private static final String START_SCAN = "startScan";
     private static final String GET_SCAN_RESULTS = "getScanResults";
     private static final String GET_CONNECTED_SSID = "getConnectedSSID";
+    private static final String GET_CONNECTED_SSID_WITHPERMISSION = "getConnectedSSIDWithpermission";
     private static final String IS_WIFI_ENABLED = "isWifiEnabled";
     private static final String SET_WIFI_ENABLED = "setWifiEnabled";
     private static final String IS_5GHZ = "is5g";
@@ -52,6 +58,18 @@ public class WifiWizard extends CordovaPlugin {
 
     private WifiManager wifiManager;
     private CallbackContext callbackContext;
+
+    private CallbackContext getSSIDCallback;
+    private CallbackContext startScanCallback;
+
+    private final int PERMISSION_REQUEST_CODE = 1;
+    private final int PERMISSION_REQUEST_CODE_GET_WIFI_LIST = 2;
+
+    private int scanWifiListCount = 0;
+
+
+    String[] perms = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
+
 
     @Override
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
@@ -79,7 +97,7 @@ public class WifiWizard extends CordovaPlugin {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
                 public void run() {
-                    connectNetwork(callbackContext,data);
+                    connectNetwork(callbackContext, data);
                 }
             });
             return true;
@@ -88,8 +106,16 @@ public class WifiWizard extends CordovaPlugin {
         } else if (action.equals(LIST_NETWORKS)) {
             return this.listNetworks(callbackContext);
         } else if (action.equals(START_SCAN)) {
-            return this.startScan(callbackContext);
+            startScanCallback = callbackContext;
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    startScan();
+                }
+            });
+            return true;
         } else if (action.equals(GET_SCAN_RESULTS)) {
+            scanWifiListCount=0;
             return this.getScanResults(callbackContext, data);
         } else if (action.equals(DISCONNECT)) {
             return this.disconnect(callbackContext);
@@ -101,7 +127,16 @@ public class WifiWizard extends CordovaPlugin {
                 }
             });
             return true;
-        } else if (action.equals(IS_5GHZ)){
+        } else if (action.equals(GET_CONNECTED_SSID_WITHPERMISSION)) {
+            this.getSSIDCallback = callbackContext;
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    getConnectedSSIDWithpermission();
+                }
+            });
+            return true;
+        } else if (action.equals(IS_5GHZ)) {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
                 public void run() {
@@ -259,7 +294,7 @@ public class WifiWizard extends CordovaPlugin {
 
         try {
             ssidToConnect = data.getString(0);
-            Log.d(TAG, "ssidToConnect="+ssidToConnect);
+            Log.d(TAG, "ssidToConnect=" + ssidToConnect);
         } catch (Exception e) {
             callbackContext.error(e.getMessage());
             Log.d(TAG, e.getMessage());
@@ -372,7 +407,7 @@ public class WifiWizard extends CordovaPlugin {
      * @param data            JSONArray with [0] == JSONObject
      * @return true
      */
-    private boolean getScanResults(CallbackContext callbackContext, JSONArray data) {
+    private boolean getScanResults(final CallbackContext callbackContext, final JSONArray data) {
         List<ScanResult> scanResults = wifiManager.getScanResults();
 
         JSONArray returnList = new JSONArray();
@@ -439,23 +474,44 @@ public class WifiWizard extends CordovaPlugin {
                 return false;
             }
         }
-
-        callbackContext.success(returnList);
+        Log.e("wifiList", returnList + "+++++++++");
+        if (returnList.length() == 0) {
+            if(scanWifiListCount<3) {
+                scanWifiListCount++;
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        getScanResults(callbackContext,data);
+                    }
+                },300);
+            }else{
+                callbackContext.error("reject permission");
+            }
+        } else {
+            callbackContext.success(returnList);
+        }
         return true;
     }
 
     /**
      * This method uses the callbackContext.success method. It starts a wifi scanning
      *
-     * @param callbackContext A Cordova callback context
      * @return true if started was successful
      */
-    private boolean startScan(CallbackContext callbackContext) {
+    private boolean startScan() {
+        if (hasPermissions()) {
+            Log.e("location", "-->有权限");
+        } else {
+            cordova.requestPermissions(this, PERMISSION_REQUEST_CODE_GET_WIFI_LIST, perms);
+//            ActivityCompat.requestPermissions(cordova.getActivity(), perms,
+//                    PERMISSION_REQUEST_CODE);
+            return false;
+        }
         if (wifiManager.startScan()) {
-            callbackContext.success();
+            startScanCallback.success();
             return true;
         } else {
-            callbackContext.error("Scan failed");
+            startScanCallback.error("Scan failed");
             return false;
         }
     }
@@ -463,21 +519,28 @@ public class WifiWizard extends CordovaPlugin {
     /**
      * This method retrieves the SSID for the currently connected network
      *
-     * @param callbackContext A Cordova callback context
      * @return true if SSID found, false if not.
      */
-    private boolean getConnectedSSID(CallbackContext callbackContext) {
+    private boolean getConnectedSSID(CallbackContext getSSIDCallback) {
+        if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.e("location", "-->有权限");
+        } else {
+            getSSIDCallback.error("reject permission");
+//            cordova.requestPermissions(this,PERMISSION_REQUEST_CODE,perms);
+//            ActivityCompat.requestPermissions(cordova.getActivity(), perms,
+//                    PERMISSION_REQUEST_CODE);
+            return false;
+        }
         if (!wifiManager.isWifiEnabled()) {
-            callbackContext.error("Wifi is disabled");
+            getSSIDCallback.error("Wifi is disabled");
             return false;
         }
 
         WifiInfo info = wifiManager.getConnectionInfo();
 
 
-
         if (info == null) {
-            callbackContext.error("Unable to read wifi info");
+            getSSIDCallback.error("Unable to read wifi info");
             return false;
         }
 
@@ -486,7 +549,7 @@ public class WifiWizard extends CordovaPlugin {
             ssid = info.getBSSID();
         }
         if (ssid.isEmpty()) {
-            callbackContext.error("SSID is empty");
+            getSSIDCallback.error("SSID is empty");
             return false;
         }
 
@@ -495,10 +558,55 @@ public class WifiWizard extends CordovaPlugin {
                 ssid = ssid.substring(1, ssid.length() - 1);
             }
         }
-
-        callbackContext.success(ssid);
+        getSSIDCallback.success(ssid);
         return true;
     }
+
+    /**
+     * This method retrieves the SSID for the currently connected network
+     *
+     * @return true if SSID found, false if not.
+     */
+    private boolean getConnectedSSIDWithpermission() {
+        if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.e("location", "-->有权限");
+        } else {
+            cordova.requestPermissions(this, PERMISSION_REQUEST_CODE, perms);
+//            ActivityCompat.requestPermissions(cordova.getActivity(), perms,
+//                    PERMISSION_REQUEST_CODE);
+            return false;
+        }
+        if (!wifiManager.isWifiEnabled()) {
+            getSSIDCallback.error("Wifi is disabled");
+            return false;
+        }
+
+        WifiInfo info = wifiManager.getConnectionInfo();
+
+
+        if (info == null) {
+            getSSIDCallback.error("Unable to read wifi info");
+            return false;
+        }
+
+        String ssid = info.getSSID();
+        if (ssid.isEmpty()) {
+            ssid = info.getBSSID();
+        }
+        if (ssid.isEmpty()) {
+            getSSIDCallback.error("SSID is empty");
+            return false;
+        }
+
+        if (Build.VERSION.SDK_INT >= 17) {
+            if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                ssid = ssid.substring(1, ssid.length() - 1);
+            }
+        }
+        getSSIDCallback.success(ssid);
+        return true;
+    }
+
 
     /**
      * This method retrieves the current WiFi status
@@ -575,6 +683,7 @@ public class WifiWizard extends CordovaPlugin {
 
     /**
      * 判断wifi是否为2.4G
+     *
      * @param freq
      * @return
      */
@@ -584,6 +693,7 @@ public class WifiWizard extends CordovaPlugin {
 
     /**
      * 判断wifi是否为5G
+     *
      * @param freq
      * @return
      */
@@ -594,7 +704,7 @@ public class WifiWizard extends CordovaPlugin {
     /**
      * 判断是否是5G
      */
-    private boolean is5GHz(CallbackContext callbackContext){
+    private boolean is5GHz(CallbackContext callbackContext) {
         if (!wifiManager.isWifiEnabled()) {
             callbackContext.error("Wifi is disabled");
             return false;
@@ -615,19 +725,19 @@ public class WifiWizard extends CordovaPlugin {
         }
         if (Build.VERSION.SDK_INT >= 21) {
 
-            callbackContext.success(is5GHz(info.getFrequency())?1:0);
+            callbackContext.success(is5GHz(info.getFrequency()) ? 1 : 0);
 
-        }else{
+        } else {
             if (Build.VERSION.SDK_INT >= 17) {
                 if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
                     ssid = ssid.substring(1, ssid.length() - 1);
                 }
             }
             if (ssid != null && ssid.length() > 2) {
-                List<ScanResult> scanResults=wifiManager.getScanResults();
-                for(ScanResult scanResult:scanResults){
-                    if(scanResult.SSID.equals(ssid)){
-                        callbackContext.success(is5GHz(scanResult.frequency)?1:0);
+                List<ScanResult> scanResults = wifiManager.getScanResults();
+                for (ScanResult scanResult : scanResults) {
+                    if (scanResult.SSID.equals(ssid)) {
+                        callbackContext.success(is5GHz(scanResult.frequency) ? 1 : 0);
                         break;
                     }
                 }
@@ -638,9 +748,48 @@ public class WifiWizard extends CordovaPlugin {
         callbackContext.success(ssid);
 
 
-
         return false;
     }
 
+
+    private boolean hasPermissions() {
+        for (String perm : perms) {
+            if (ContextCompat.checkSelfPermission(cordova.getActivity(), perm) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) {
+        doNext(requestCode, grantResults);
+    }
+
+    private void doNext(int requestCode, int[] grantResults) {
+        if (requestCode == PERMISSION_REQUEST_CODE || requestCode == PERMISSION_REQUEST_CODE_GET_WIFI_LIST) {
+            boolean isGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    isGranted = false;
+                }
+            }
+            if (isGranted) { //允许
+                Log.e("location", "允许了");
+                if (requestCode == PERMISSION_REQUEST_CODE) {
+                    getConnectedSSIDWithpermission();
+                } else {
+                    startScan();
+                }
+            } else {
+                Log.e("location", "不允许了");
+                if (requestCode == PERMISSION_REQUEST_CODE) {
+                    getSSIDCallback.error("reject permission");
+                } else {
+                    startScanCallback.error("reject permission");
+                }
+            }
+        }
+    }
 
 }
