@@ -590,10 +590,10 @@ public class WifiWizard extends CordovaPlugin {
         }
 
         String ssid = info.getSSID();
-        if (ssid.isEmpty()) {
+        if (ssid ==null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid.isEmpty()) {
+        if (ssid==null||ssid.isEmpty()) {
             getSSIDCallback.error("SSID is empty");
             return false;
         }
@@ -716,11 +716,11 @@ public class WifiWizard extends CordovaPlugin {
             return false;
         }
         String ssid = info.getSSID();
-        if (ssid.isEmpty()) {
+        if (ssid ==null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid.isEmpty()) {
-            callbackContext.error("SSID is empty");
+        if (ssid==null||ssid.isEmpty()) {
+            getSSIDCallback.error("SSID is empty");
             return false;
         }
         if (Build.VERSION.SDK_INT >= 21) {
