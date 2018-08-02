@@ -545,10 +545,10 @@ public class WifiWizard extends CordovaPlugin {
         }
 
         String ssid = info.getSSID();
-        if (ssid.isEmpty()) {
+        if (ssid ==null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid.isEmpty()) {
+        if (ssid==null||ssid.isEmpty()) {
             getSSIDCallback.error("SSID is empty");
             return false;
         }
