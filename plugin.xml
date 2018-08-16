@@ -44,6 +44,13 @@
 		<header-file src="src/ios/NXWWifiWizard.h"/>
 		<source-file src="src/ios/NXWWifiWizard.m"/>
 		<framework src="SystemConfiguration.framework" />
+        
+        <config-file parent="com.apple.developer.networking.HotspotConfiguration" target="*/Entitlements-Release.plist">
+            <true/>
+        </config-file>
+        <config-file parent="com.apple.external-accessory.wireless-configuration" target="*/Entitlements-Release.plist">
+            <true/>
+        </config-file>
 	</platform>
 
 </plugin>
