@@ -172,6 +172,7 @@ typedef NS_ENUM(NSInteger, GizNetworkEncryptionType) {
             } else {
                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unknown error."];
             }
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
         }];
     } else {
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"This method does not support the system version less than iOS 11.0"];
