@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,8 +15,16 @@
 package com.pylonproducts.wifiwizard;
 
 import android.Manifest;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
+import android.location.LocationManager;
+import android.net.Uri;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
@@ -24,6 +32,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
+import android.provider.Settings;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
@@ -38,6 +47,8 @@ import org.json.JSONObject;
 
 import java.util.List;
 
+import static android.content.Context.LOCATION_SERVICE;
+
 
 public class WifiWizard extends CordovaPlugin {
 
@@ -51,6 +62,7 @@ public class WifiWizard extends CordovaPlugin {
     private static final String GET_SCAN_RESULTS = "getScanResults";
     private static final String GET_CONNECTED_SSID = "getConnectedSSID";
     private static final String GET_CONNECTED_SSID_WITHPERMISSION = "getConnectedSSIDWithpermission";
+    private static final String OPEN_LOCATION_SERVICE = "openLocationService";
     private static final String IS_WIFI_ENABLED = "isWifiEnabled";
     private static final String SET_WIFI_ENABLED = "setWifiEnabled";
     private static final String IS_5GHZ = "is5g";
@@ -62,19 +74,42 @@ public class WifiWizard extends CordovaPlugin {
     private CallbackContext getSSIDCallback;
     private CallbackContext startScanCallback;
 
+    private CallbackContext openLocationServiceCallback;
+
     private final int PERMISSION_REQUEST_CODE = 1;
     private final int PERMISSION_REQUEST_CODE_GET_WIFI_LIST = 2;
 
     private int scanWifiListCount = 0;
 
+    private LocationManager mLocationManager;
 
-    String[] perms = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
+    String[] perms = {Manifest.permission.ACCESS_FINE_LOCATION};
 
+    private final ContentObserver mGpsMonitor = new ContentObserver(null) {
+        @Override
+        public void onChange(boolean selfChange) {
+            super.onChange(selfChange);
+
+            boolean enabled = mLocationManager
+                    .isProviderEnabled(LocationManager.GPS_PROVIDER);
+
+            if (enabled) {
+                getConnectedSSIDWithpermission();
+            }
+            Log.e("gps ： ", enabled + " ");
+        }
+    };
 
     @Override
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
         super.initialize(cordova, webView);
         this.wifiManager = (WifiManager) cordova.getActivity().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        this.mLocationManager = (LocationManager) cordova.getActivity().getApplicationContext().getSystemService(LOCATION_SERVICE);
+        cordova.getActivity().getApplicationContext().getContentResolver()
+                .registerContentObserver(
+                        Settings.Secure
+                                .getUriFor(Settings.Secure.LOCATION_PROVIDERS_ALLOWED),
+                        false, mGpsMonitor);
     }
 
     @Override
@@ -115,7 +150,7 @@ public class WifiWizard extends CordovaPlugin {
             });
             return true;
         } else if (action.equals(GET_SCAN_RESULTS)) {
-            scanWifiListCount=0;
+            scanWifiListCount = 0;
             return this.getScanResults(callbackContext, data);
         } else if (action.equals(DISCONNECT)) {
             return this.disconnect(callbackContext);
@@ -135,6 +170,10 @@ public class WifiWizard extends CordovaPlugin {
                     getConnectedSSIDWithpermission();
                 }
             });
+            return true;
+        } else if (action.equals(OPEN_LOCATION_SERVICE)) {
+            this.openLocationServiceCallback = callbackContext;
+            this.openLocationService();
             return true;
         } else if (action.equals(IS_5GHZ)) {
             cordova.getThreadPool().execute(new Runnable() {
@@ -476,15 +515,15 @@ public class WifiWizard extends CordovaPlugin {
         }
         Log.e("wifiList", returnList + "+++++++++");
         if (returnList.length() == 0) {
-            if(scanWifiListCount<3) {
+            if (scanWifiListCount < 3) {
                 scanWifiListCount++;
                 new Handler().postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        getScanResults(callbackContext,data);
+                        getScanResults(callbackContext, data);
                     }
-                },300);
-            }else{
+                }, 300);
+            } else {
                 callbackContext.error("reject permission");
             }
         } else {
@@ -500,6 +539,11 @@ public class WifiWizard extends CordovaPlugin {
      */
     private boolean startScan() {
         if (hasPermissions()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mLocationManager
+                    .isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                startScanCallback.error("location service off");
+                return false;
+            }
             Log.e("location", "-->有权限");
         } else {
             cordova.requestPermissions(this, PERMISSION_REQUEST_CODE_GET_WIFI_LIST, perms);
@@ -524,6 +568,11 @@ public class WifiWizard extends CordovaPlugin {
     private boolean getConnectedSSID(CallbackContext getSSIDCallback) {
         if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             Log.e("location", "-->有权限");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mLocationManager
+                    .isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                getSSIDCallback.error("location service off");
+                return false;
+            }
         } else {
             getSSIDCallback.error("reject permission");
 //            cordova.requestPermissions(this,PERMISSION_REQUEST_CODE,perms);
@@ -545,10 +594,10 @@ public class WifiWizard extends CordovaPlugin {
         }
 
         String ssid = info.getSSID();
-        if (ssid ==null || ssid.isEmpty()) {
+        if (ssid == null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid==null||ssid.isEmpty()) {
+        if (ssid == null || ssid.isEmpty()) {
             getSSIDCallback.error("SSID is empty");
             return false;
         }
@@ -562,22 +611,42 @@ public class WifiWizard extends CordovaPlugin {
         return true;
     }
 
+    private void openLocationService() {
+        final Context context = cordova.getActivity();
+        Intent intent = new Intent();
+        intent.setAction(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+        } catch (ActivityNotFoundException ex) {
+            intent.setAction(Settings.ACTION_SETTINGS);
+            try {
+                context.startActivity(intent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     /**
      * This method retrieves the SSID for the currently connected network
      *
      * @return true if SSID found, false if not.
      */
     private boolean getConnectedSSIDWithpermission() {
+
         if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            Log.e("location", "-->有权限");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mLocationManager
+                    .isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                getSSIDCallback.error("location service off");
+                return false;
+            }
         } else {
             cordova.requestPermissions(this, PERMISSION_REQUEST_CODE, perms);
-//            ActivityCompat.requestPermissions(cordova.getActivity(), perms,
-//                    PERMISSION_REQUEST_CODE);
             return false;
         }
         if (!wifiManager.isWifiEnabled()) {
-            getSSIDCallback.error("Wifi is disabled");
+            callbackSSID("Wifi is disabled");
             return false;
         }
 
@@ -585,16 +654,16 @@ public class WifiWizard extends CordovaPlugin {
 
 
         if (info == null) {
-            getSSIDCallback.error("Unable to read wifi info");
+            callbackSSID("Unable to read wifi info");
             return false;
         }
 
         String ssid = info.getSSID();
-        if (ssid ==null || ssid.isEmpty()) {
+        if (ssid == null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid==null||ssid.isEmpty()) {
-            getSSIDCallback.error("SSID is empty");
+        if (ssid == null || ssid.isEmpty()) {
+            callbackSSID("SSID is empty");
             return false;
         }
 
@@ -604,7 +673,20 @@ public class WifiWizard extends CordovaPlugin {
             }
         }
         getSSIDCallback.success(ssid);
+        if(openLocationServiceCallback!=null)
+        {
+            openLocationServiceCallback.success(ssid);
+        }
         return true;
+    }
+
+    public void callbackSSID(String call)
+    {
+        getSSIDCallback.error(call);
+        if(openLocationServiceCallback!=null)
+        {
+            openLocationServiceCallback.error(call);
+        }
     }
 
 
@@ -716,10 +798,10 @@ public class WifiWizard extends CordovaPlugin {
             return false;
         }
         String ssid = info.getSSID();
-        if (ssid ==null || ssid.isEmpty()) {
+        if (ssid == null || ssid.isEmpty()) {
             ssid = info.getBSSID();
         }
-        if (ssid==null||ssid.isEmpty()) {
+        if (ssid == null || ssid.isEmpty()) {
             getSSIDCallback.error("SSID is empty");
             return false;
         }

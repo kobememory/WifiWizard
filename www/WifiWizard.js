@@ -248,6 +248,14 @@
             }
             cordova.exec(win, fail, 'WifiWizard', 'getConnectedSSID', []);
         },
+
+        openLocationService: function(win, fail) {
+            if (typeof win != "function") {
+                console.log("openLocationService first parameter must be a function to handle SSID.");
+                return;
+                }
+            cordova.exec(win, fail, 'WifiWizard', 'openLocationService', []);
+        },
     
         getCurrentSSIDWithpermission: function(win, fail) {
             if (typeof win != "function") {
