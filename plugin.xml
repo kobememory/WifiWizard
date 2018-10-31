@@ -51,6 +51,10 @@
         <config-file parent="com.apple.external-accessory.wireless-configuration" target="*/Entitlements-Release.plist">
             <true/>
         </config-file>
+        
+        <config-file target="*/Entitlements-Release.plist" parent="com.apple.developer.networking.wifi-info">
+            <true/>
+        </config-file>
 	</platform>
 
 </plugin>
