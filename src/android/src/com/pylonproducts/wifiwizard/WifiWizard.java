@@ -566,9 +566,9 @@ public class WifiWizard extends CordovaPlugin {
      * @return true if SSID found, false if not.
      */
     private boolean getConnectedSSID(CallbackContext getSSIDCallback) {
-        if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        if (hasPermissions() || Build.VERSION.SDK_INT <= Build.VERSION_CODES.O) {
             Log.e("location", "-->有权限");
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mLocationManager
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O && !mLocationManager
                     .isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 getSSIDCallback.error("location service off");
                 return false;
@@ -635,8 +635,8 @@ public class WifiWizard extends CordovaPlugin {
      */
     private boolean getConnectedSSIDWithpermission() {
 
-        if (hasPermissions() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !mLocationManager
+        if (hasPermissions() || Build.VERSION.SDK_INT <=Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O && !mLocationManager
                     .isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 getSSIDCallback.error("location service off");
                 return false;
