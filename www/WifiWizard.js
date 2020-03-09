@@ -18,6 +18,17 @@
      */
     
     var WifiWizard = {
+
+         /**
+          * Start network scan and return results
+          * @param options
+          * @returns {Promise<any>}
+          */
+        scan: function (options) {
+            return new Promise(function (resolve, reject) {
+                cordova.exec(resolve, reject, 'WifiWizard', 'scan', [options]);
+            });
+        },
     
         /**
          * 	This method formats wifi information into an object for use with the

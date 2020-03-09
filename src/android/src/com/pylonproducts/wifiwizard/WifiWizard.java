@@ -45,6 +45,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+
 import java.util.List;
 
 import static android.content.Context.LOCATION_SERVICE;
@@ -52,6 +55,7 @@ import static android.content.Context.LOCATION_SERVICE;
 
 public class WifiWizard extends CordovaPlugin {
 
+    private static final String SCAN = "scan";
     private static final String ADD_NETWORK = "addNetwork";
     private static final String REMOVE_NETWORK = "removeNetwork";
     private static final String CONNECT_NETWORK = "connectNetwork";
@@ -76,8 +80,10 @@ public class WifiWizard extends CordovaPlugin {
 
     private CallbackContext openLocationServiceCallback;
 
+    private static final int SCAN_RESULTS_CODE = 0; // Permissions request code for getScanResults()
     private final int PERMISSION_REQUEST_CODE = 1;
     private final int PERMISSION_REQUEST_CODE_GET_WIFI_LIST = 2;
+    private static final String ACCESS_FINE_LOCATION = android.Manifest.permission.ACCESS_FINE_LOCATION;
 
     private int scanWifiListCount = 0;
 
@@ -117,7 +123,9 @@ public class WifiWizard extends CordovaPlugin {
             throws JSONException {
         this.callbackContext = callbackContext;
 
-        if (action.equals(IS_WIFI_ENABLED)) {
+        if (action.equals(SCAN)) {
+            return this.scan(callbackContext, data);
+        } else if (action.equals(IS_WIFI_ENABLED)) {
             return this.isWifiEnabled(callbackContext);
         } else if (action.equals(SET_WIFI_ENABLED)) {
             return this.setWifiEnabled(callbackContext, data);
@@ -188,6 +196,100 @@ public class WifiWizard extends CordovaPlugin {
         }
 
         return false;
+    }
+
+    /**
+     * Scans networks and sends the list back on the success callback
+     *
+     * @param callbackContext A Cordova callback context
+     * @param data JSONArray with [0] == JSONObject
+     * @return true
+     */
+    private boolean scan(final CallbackContext callbackContext, final JSONArray data) {
+        if (!cordova.hasPermission(ACCESS_FINE_LOCATION)) {
+            requestLocationPermission(SCAN_RESULTS_CODE);
+            callbackContext.error("reject permission");
+            return false;
+        }
+
+        Log.v(TAG, "Entering startScan");
+        final ScanSyncContext syncContext = new ScanSyncContext();
+
+        final BroadcastReceiver receiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+                Log.v(TAG, "Entering onReceive");
+
+                synchronized (syncContext) {
+                    if (syncContext.finished) {
+                        Log.v(TAG, "In onReceive, already finished");
+                        return;
+                    }
+                    syncContext.finished = true;
+                    context.unregisterReceiver(this);
+                }
+
+                Log.v(TAG, "In onReceive, success");
+                getScanResults(callbackContext, data);
+            }
+        };
+
+        final Context context = cordova.getActivity().getApplicationContext();
+
+        Log.v(TAG, "Submitting timeout to threadpool");
+
+        cordova.getThreadPool().submit(new Runnable() {
+
+            public void run() {
+
+                Log.v(TAG, "Entering timeout");
+
+                final int TEN_SECONDS = 10000;
+
+                try {
+                    Thread.sleep(TEN_SECONDS);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Received InterruptedException e, " + e);
+                    // keep going into error
+                }
+
+                Log.v(TAG, "Thread sleep done");
+
+                synchronized (syncContext) {
+                    if (syncContext.finished) {
+                        Log.v(TAG, "In timeout, already finished");
+                        return;
+                    }
+                    syncContext.finished = true;
+                    context.unregisterReceiver(receiver);
+                }
+
+                Log.v(TAG, "In timeout, error");
+                callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
+            }
+
+        });
+
+        Log.v(TAG, "Registering broadcastReceiver");
+        context.registerReceiver(
+            receiver,
+            new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+        );
+
+        if (!wifiManager.startScan()) {
+            Log.v(TAG, "Scan failed");
+            callbackContext.error("SCAN_FAILED");
+            return false;
+        }
+
+        Log.v(TAG, "Starting wifi scan");
+        return true;
+    }
+
+    /**
+     * Class to store finished boolean in
+     */
+    private class ScanSyncContext {
+        public boolean finished = false;
     }
 
     /**
@@ -873,5 +975,15 @@ public class WifiWizard extends CordovaPlugin {
             }
         }
     }
+
+    
+    /**
+    * Request ACCESS_FINE_LOCATION Permission
+    * @param requestCode
+    */
+    protected void requestLocationPermission(int requestCode) {
+        cordova.requestPermission(this, requestCode, ACCESS_FINE_LOCATION);
+    }
+
 
 }
